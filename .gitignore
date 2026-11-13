@@ -22,6 +22,12 @@ scripts/_*.cjs
 *.tmp
 *.swp
 
+# 本机 npm 登录/发布临时目录（含 token，绝不入库）
+.npm-cache/
+.npmrc
+.npmrc.*
+.npm-login-url.txt
+
 # 本机 TLS / 配置（不入库；由运行时生成于 ~/.dsh/dshweb/）
 tls.cert.pem
 tls.key.pem
