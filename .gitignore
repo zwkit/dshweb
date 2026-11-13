@@ -1,0 +1,31 @@
+# 依赖
+node_modules/
+
+# 本机运行 / 构建日志
+*.log
+build.log
+test.log
+
+# 本机还原 / 反编译草稿（非发布内容）
+.restore/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时脚本 / 探针
+scripts/_cleanup-once.cjs
+scripts/_*.cjs
+*.tmp
+*.swp
+
+# 本机 TLS / 配置（不入库；由运行时生成于 ~/.dsh/dshweb/）
+tls.cert.pem
+tls.key.pem
+settings.json
+sessions.json
+
+# 注意：lib/ 是已提交的编译产物（git 依赖安装需要），不要忽略。

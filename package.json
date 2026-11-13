@@ -1,0 +1,66 @@
+{
+  "name": "dshweb",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 远程网页端接入插件：局域网/虚拟私网 IP 访问官方 Web，移动优先适配，热重载免重启 | DeepSeek Harness (DSH) Remote Web Access: LAN/VPN IP access to official Web UI with hot-reload gateway, no DSH restart needed",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "remote-access",
+    "mobile",
+    "cordis-plugin",
+    "gateway"
+  ],
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zwkit/dshweb.git"
+  },
+  "main": "lib/index.js",
+  "icon": "./icon.svg",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "deploy": "node scripts/build.cjs --deploy",
+    "prepare": "node scripts/build.cjs --prepare",
+    "typecheck": "tsc --noEmit",
+    "test": "node test/run-all.mjs"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "prettier": "^3.10.1",
+    "typescript": "^7.0.2"
+  }
+}
