@@ -123,3 +123,4 @@ node scripts/gen-pwa-icons.mjs
 3. `package.json` 的 `files` 含 `lib`、`cordis.patch.yml`、`icon.svg`、`README.md`、`LICENSE`。
 4. `README.md` / `LICENSE` 存在，`repository.url` 指向正确仓库。
 5. `.gitignore` 忽略 `node_modules/`、`*.log`、`.restore/` 等本机产物。
+6. 发到 npm 时，**裸名 `dshweb` 会被 npm 判定与占位包 `dsh-web` 过近而 `403`**；仓库里的 `package.json` 保持 `name: dshweb` 不变（本地 `file:` 开发模式依赖它），发布时临时把 `name` 改成 `@zwkit/dshweb` 并用 `npm publish --access=public --ignore-scripts` 发布，发完立即还原。安装侧用别名 `"dshweb": "npm:@zwkit/dshweb@^0.1.0"`。

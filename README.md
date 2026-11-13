@@ -80,6 +80,24 @@ npm update dshweb
 
 仓库已随源码提交 `lib/` 编译产物，并配置了 `prepare` 钩子：git 依赖安装时若本机缺少构建工具链，会直接沿用已提交的 `lib/`，不会让安装失败。更新回路：`git push` → `npm update dshweb` → 重启 DSH（或触发插件重载）。
 
+#### 方式 C：npm registry（已发布的作用域包）
+
+本插件已在 npm 上以作用域包 [`@zwkit/dshweb`](https://www.npmjs.com/package/@zwkit/dshweb) 发布（裸名 `dshweb` 被 npm 判定与占位包 `dsh-web` 过近，故采用作用域名）。把 profile 里的依赖改成：
+
+```json
+{
+  "dependencies": {
+    "dshweb": "npm:@zwkit/dshweb@^0.1.0"
+  }
+}
+```
+
+```bash
+npm install
+```
+
+包名别名 `dshweb` 仅供加载器按包名解析；实际来源是作用域包。注意：本地 `file:` 开发模式（方式 A）与这里的 npm 安装互不冲突，二者择一即可。
+
 ### 使用
 
 1. 安装并重启 DSH，让插件加载。
@@ -243,6 +261,22 @@ npm run deploy          # copy artifacts into ~/.dsh (two physical copies)
 `npm run deploy` copies to `~/.dsh/dshweb-plugin` and `~/.dsh/profiles/desktop/node_modules/dshweb` — two **physical copies, not symlinks/junctions** (runtime must live entirely on the system drive, no links).
 
 **GitHub/git dependency (after publishing):** set `"dshweb": "github:zwkit/dshweb"` in the profile's `package.json`, then `npm update dshweb`. Committed `lib/` + a `prepare` hook keep git installs working without a local toolchain.
+
+**npm registry (published scoped package):** the plugin is published on npm as the scoped package [`@zwkit/dshweb`](https://www.npmjs.com/package/@zwkit/dshweb) (the bare name `dshweb` is rejected by npm as too similar to the placeholder package `dsh-web`, hence the scoped name). Set the profile dependency to:
+
+```json
+{
+  "dependencies": {
+    "dshweb": "npm:@zwkit/dshweb@^0.1.0"
+  }
+}
+```
+
+```bash
+npm install
+```
+
+The `dshweb` alias is only for the loader's package-name resolution; the actual source is the scoped package. The local `file:` development setup and this npm install are mutually exclusive — pick one.
 
 ### Usage
 
