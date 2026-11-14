@@ -24,6 +24,8 @@
   "scripts": {
     "build": "node scripts/build.cjs",
     "deploy": "node scripts/build.cjs --deploy",
+    "deploy:local": "node scripts/build.cjs --deploy-only",
+    "deploy:check": "node scripts/build.cjs --deploy-check",
     "prepare": "node scripts/build.cjs --prepare",
     "typecheck": "tsc --noEmit",
     "test": "node test/run-all.mjs"

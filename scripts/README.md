@@ -31,7 +31,9 @@
 | 命令 | 等价 | 行为 |
 | --- | --- | --- |
 | `npm run build` | `node scripts/build.cjs` | 仅编译 → `lib/`（不写本机路径） |
-| `npm run deploy` | `node scripts/build.cjs --deploy` | 编译 + 物理复制到本机 DSH profile |
+| `npm run deploy` | `node scripts/build.cjs --deploy` | 编译 + 物理复制到本机 DSH profile（需正常 shell） |
+| `npm run deploy:local` | `node scripts/build.cjs --deploy-only` | **不编译**，把当前 `lib/` 物理复制到本机两处（不 spawn 子进程，受限沙箱可用） |
+| `npm run deploy:check` | `node scripts/build.cjs --deploy-check` | **只读**：逐字节比对两处本机副本与源码，漂移则退出码 2 |
 | `npm run prepare` | `node scripts/build.cjs --prepare` | npm 安装钩子（见下） |
 | `npm run typecheck` | `tsc --noEmit` | 仅类型检查 |
 | `npm test` | `node test/run-all.mjs` | 跑 `test/` 下全部测试 |
@@ -40,7 +42,9 @@
 
 | 变量 / 参数 | 作用 |
 | --- | --- |
-| `--deploy` 或 `DSHWEB_DEPLOY=1` | 启用第 5 步「复制安装」。默认关闭。 |
+| `--deploy` 或 `DSHWEB_DEPLOY=1` | 启用第 5 步「复制安装」（含编译）。默认关闭。 |
+| `--deploy-only` | 启用第 5 步但**跳过编译**，沿用已提交的 `lib/`；不调用 `spawnSync`，在 DSH 的 workspace-write 沙箱里也能跑。 |
+| `--deploy-check` | 只读校验模式：不写任何文件、不编译，逐字节 + 版本号比对两处副本；漂移退出码 2。 |
 | `DSHWEB_DEPLOY_DIRS` | 覆盖部署目标，用分号 `;` 或逗号 `,` 分隔多个绝对路径。 |
 | `--prepare` | npm git-install 钩子模式：缺工具链但 `lib/` 已提交时，跳过编译沿用产物。 |
 
@@ -74,6 +78,38 @@
 > $env:DSHWEB_DEPLOY_DIRS = "D:\my\dshweb-plugin;D:\my\profile\node_modules\dshweb"
 > npm run deploy
 > ```
+
+### ⚠️ 发版必须同步本机（三条独立的线）
+
+这是最容易踩的坑：**GitHub / npm / 本机运行是三条互不自动同步的线**。
+推了 GitHub、发了 npm `latest`，本机 DSH 加载的仍是 C 盘那两处 `file:` 物理副本——
+`npm run build` / `deploy:check` 都不会自动把它们更新。真实事故：0.1.1 发布后
+GitHub 与 npm 都已是 0.1.1，但本机 GUI 仍显示 0.1.0，因为那轮只做了编译 + 推远端，
+**漏了本地部署这一步**。
+
+发版 / 改完版本后的固定收尾顺序：
+
+```bash
+# 1. 编译 + 测试（正常机器；受限沙箱用顶层 tsc）
+npm run build && npm test
+# 2. 同步本机两处物理副本（受限沙箱用 deploy:local，它不 spawn 编译进程）
+npm run deploy:local     # 或普通机器上的 npm run deploy（编译+复制一步到位）
+# 3. 校验：必须两处都「一致」，退出码 0
+npm run deploy:check
+# 4. 重启 DSH —— 版本号来自启动时加载的 routes/api.ts，磁盘已更新但进程内存仍是旧值
+#    （仅改 server.ts 才可用 POST /api/dshweb/reload 热重载；index.ts / routes/api.ts / store.ts 必须重启）
+# 5. 推 GitHub / 发 npm registry
+```
+
+`deploy:local` 会**复制后自动逐字节自检**，任何不一致直接失败；`deploy:check`
+是纯只读守卫，可随时单独运行（如发版前、或在另一台机器 clone 后）确认本机副本
+没有悄悄落后。`deploy:check` 比对的是**磁盘文件**——即使它全绿，未重启的 DSH
+进程里 `status` 仍可能返回旧版本，第 4 步不能省。
+
+> 沙箱提示：`npm run deploy`（含编译）会 `spawnSync` 子 `node.exe`，在 DSH 的
+> workspace-write 沙箱里报 `EPERM`；写 C 盘副本还需要 `danger-full-access`。
+> 受限环境里的可靠组合 = 顶层 `node node_modules/typescript/bin/tsc -p tsconfig.json`
+> 产出 `lib/` → `npm run deploy:local`（复制，无 spawn）→ `npm run deploy:check`（只读校验）。
 
 ### 工具链
 
@@ -127,4 +163,5 @@ node scripts/build.cjs
 3. `package.json` 的 `files` 含 `lib`、`cordis.patch.yml`、`icon.svg`、`README.md`、`LICENSE`。
 4. `README.md` / `LICENSE` 存在，`repository.url` 指向正确仓库。
 5. `.gitignore` 忽略 `node_modules/`、`*.log`、`.restore/` 等本机产物。
-6. 发到 npm 时，**裸名 `dshweb` 会被 npm 判定与占位包 `dsh-web` 过近而 `403`**；仓库里的 `package.json` 保持 `name: dshweb` 不变（本地 `file:` 开发模式依赖它），发布时临时把 `name` 改成 `@zwkit/dshweb` 并用 `npm publish --access=public --ignore-scripts` 发布，发完立即还原。安装侧用别名 `"dshweb": "npm:@zwkit/dshweb@^0.1.1"`。
+6. **本机两处物理副本已同步**：跑 `npm run deploy:local`（或 `npm run deploy`）后 `npm run deploy:check` 两处都「一致」、退出码 0；随后**重启 DSH**（否则 GUI 的 `status` 仍是旧版本）。参见上文「发版必须同步本机」。
+7. 发到 npm 时，**裸名 `dshweb` 会被 npm 判定与占位包 `dsh-web` 过近而 `403`**；仓库里的 `package.json` 保持 `name: dshweb` 不变（本地 `file:` 开发模式依赖它），发布时临时把 `name` 改成 `@zwkit/dshweb` 并用 `npm publish --access=public --ignore-scripts` 发布，发完立即还原。安装侧用别名 `"dshweb": "npm:@zwkit/dshweb@^0.1.1"`。

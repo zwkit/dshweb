@@ -50,10 +50,13 @@ npm install
 npm run build
 
 # 3) 把构建产物复制安装到本机 DSH profile（两处物理副本）
-npm run deploy
+npm run deploy          # 普通机器：编译 + 复制一步到位
+# 或受限沙箱内：npm run deploy:local（不编译，直接复制已提交的 lib/）
+# 4) 校验两处一致（只读），再重启 DSH
+npm run deploy:check
 ```
 
-`npm run deploy` 默认把产物复制到：
+`npm run deploy` / `deploy:local` 默认把产物复制到：
 
 - `~/.dsh/dshweb-plugin`（canonical）
 - `~/.dsh/profiles/desktop/node_modules/dshweb`（profile 的 `node_modules` 下，加载器按包名解析）
@@ -61,6 +64,8 @@ npm run deploy
 两者是**同一次构建的逐文件物理副本，不是软链接 / junction**。这是刻意的：运行态必须完全落在 C 盘（开发盘 `D:\` 是 iSCSI 挂载时尤其重要），且不依赖任何链接。
 
 > 本机 profile 的 `package.json` 里需把本插件登记为 `file:` 依赖并列入 `dsh.profile.bundles`（`deploy` 脚本只负责复制文件，不会改 profile 的注册信息）。
+>
+> **发版必读**：推 GitHub / 发 npm 不会自动更新本机这两处副本。每次发版后必须 `npm run deploy:local`（或 `deploy`）→ `npm run deploy:check` → **重启 DSH**（`status` 的版本号在启动时加载，磁盘更新不会热生效）。详见 [scripts/README.md「发版必须同步本机」](scripts/README.md)。
 
 #### 方式 B：GitHub / git 依赖（发布后）
 
@@ -145,6 +150,8 @@ npm install
 npm install          # 安装 devDependencies（typescript / esbuild / @types/node / prettier）
 npm run build        # 可移植构建：tsc + esbuild + 包装 client.js + 拷 PWA 资源 → lib/（不碰任何本机路径）
 npm run deploy       # 本地部署：构建 + 把产物物理复制到 ~/.dsh 两处
+npm run deploy:local # 仅复制：不编译、不 spawn 子进程，把已提交的 lib/ 同步到 ~/.dsh 两处（受限沙箱可用）
+npm run deploy:check # 只读校验：逐字节比对两处副本与源码，漂移则退出码 2
 npm run typecheck    # tsc --noEmit
 npm test             # 运行 test/ 下全部测试
 ```
@@ -255,10 +262,14 @@ Requires Node.js `>=18`. It's a DSH **bundle plugin** (`cordis.patch.yml`).
 ```bash
 git clone https://github.com/zwkit/dshweb.git && cd dshweb
 npm install && npm run build
-npm run deploy          # copy artifacts into ~/.dsh (two physical copies)
+npm run deploy          # build + copy artifacts into ~/.dsh (two physical copies)
+# or in a restricted sandbox: npm run deploy:local (copy committed lib/, no compile/spawn)
+npm run deploy:check    # read-only: verify both copies match source byte-for-byte
 ```
 
-`npm run deploy` copies to `~/.dsh/dshweb-plugin` and `~/.dsh/profiles/desktop/node_modules/dshweb` — two **physical copies, not symlinks/junctions** (runtime must live entirely on the system drive, no links).
+`npm run deploy` / `deploy:local` copy to `~/.dsh/dshweb-plugin` and `~/.dsh/profiles/desktop/node_modules/dshweb` — two **physical copies, not symlinks/junctions** (runtime must live entirely on the system drive, no links).
+
+> **Release rule:** pushing GitHub / publishing npm does **not** update these local copies. After every release run `deploy:local` (or `deploy`) → `deploy:check` → **restart DSH** (the `status` version is loaded at startup). See [scripts/README.md](scripts/README.md)「发版必须同步本机」.
 
 **GitHub/git dependency (after publishing):** set `"dshweb": "github:zwkit/dshweb"` in the profile's `package.json`, then `npm update dshweb`. Committed `lib/` + a `prepare` hook keep git installs working without a local toolchain.
 
@@ -299,6 +310,8 @@ Key options (`src/store.ts` `WebOptions`): `port` (3180), `httpsEnabled` (defaul
 npm install
 npm run build        # portable: tsc + esbuild + wrap client.js + PWA assets -> lib/ (no machine paths)
 npm run deploy       # build + physical copy into ~/.dsh
+npm run deploy:local # copy committed lib/ only (no compile / no spawn; sandbox-safe)
+npm run deploy:check # read-only drift check of both local copies (exit 2 on mismatch)
 npm run typecheck
 npm test
 ```
@@ -306,6 +319,8 @@ npm test
 See [scripts/README.md](scripts/README.md) for build details.
 
 **Hot-reload boundary:** changing `src/gateway/server.ts` can be hot-reloaded via `POST /api/dshweb/reload {}` (busts `server.js` ESM cache). Changes to `index.ts` / `store.ts` / `routes/api.ts` / client UI require a **DSH restart**; UI changes also need a browser hard-refresh.
+
+**Release rule:** GitHub / npm and the local `file:` copies are three separate lines. After every release: `deploy:local` → `deploy:check` → **restart DSH**. `deploy:check` verifies disk only — a still-running process keeps the old `status` version in memory.
 
 ### Security
 
