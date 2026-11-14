@@ -356,6 +356,86 @@ await r.run(async (check) => {
     check('GET 请求不做同源校验', getReq.status === 200, `status=${getReq.status}`);
   }
 
+  // ── 6b. 域名/CDN 答案提交回归（远程端「选择弹窗提交无效、几秒后重现」）──
+  // 隧道把 Host 改写成回环绑定地址、浏览器 Origin 仍是白名单公网域名时：
+  // 统一写校验必须放行、反代必须照样把 Origin 洗白成回环核心（核心围栏要求
+  // Origin.host === Host），否则 POST /api/$events/result 被 403 → 代际重置 →
+  // pending waterfall 重新下发 → 选择窗再次弹出。第三方来源仍必须 403。
+  {
+    store.updateOptions({ trustedHosts: ['dsh.my-cloud.cn'] });
+    const token = store.createSession('mobile');
+    const cookie = `${SESSION_COOKIE}=${token}`;
+    const answerBody = JSON.stringify({
+      type: 'client-request', rpcId: 'reg-1', method: '$events/result',
+      payload: { args: { clientId: 'c', eventId: 'e', outcome: { kind: 'result', value: {} } } },
+    });
+
+    // (a) Host 被 CDN 改写成回环、Origin 为白名单域名：写校验放行（不再是 403）。
+    const rewritten = await viaGateway(gwPort, {
+      path: '/api/$events/result',
+      method: 'POST',
+      headers: H({ cookie, host: `127.0.0.1:${gwPort}`, origin: 'https://dsh.my-cloud.cn',
+        'sec-fetch-site': 'same-origin', 'content-type': 'application/json' }),
+      body: answerBody,
+    });
+    check('CDN 改写 Host + 白名单 Origin 的答案 POST 不再 403', rewritten.status !== 403, `status=${rewritten.status}`);
+
+    // (b) 即便 CDN 注入 sec-fetch-site: cross-site，白名单 Origin 仍按同源放行。
+    const crossInjected = await viaGateway(gwPort, {
+      path: '/api/$events/result',
+      method: 'POST',
+      headers: H({ cookie, host: `127.0.0.1:${gwPort}`, origin: 'https://dsh.my-cloud.cn',
+        'sec-fetch-site': 'cross-site', 'content-type': 'application/json' }),
+      body: answerBody,
+    });
+    check('白名单 Origin + CDN 注入 cross-site 仍放行', crossInjected.status !== 403, `status=${crossInjected.status}`);
+
+    // (c) 反代头：白名单 Origin 被虚拟化成回环核心（核心围栏要求）。
+    seen.length = 0;
+    await viaGateway(gwPort, {
+      path: '/api/data',
+      method: 'POST',
+      headers: H({ cookie, host: `127.0.0.1:${gwPort}`, origin: 'https://dsh.my-cloud.cn',
+        referer: 'https://dsh.my-cloud.cn/some/page', 'sec-fetch-site': 'cross-site',
+        'content-type': 'application/json' }),
+      body: '{}',
+    });
+    const hdr = seen[seen.length - 1];
+    check('白名单域名 Origin 被洗白为回环核心', hdr.headers.origin === `http://127.0.0.1:${corePort}`, hdr.headers.origin);
+    check('白名单域名 Referer 被洗白为回环核心', String(hdr.headers.referer || '').startsWith(`http://127.0.0.1:${corePort}/`), hdr.headers.referer);
+    check('白名单域名 sec-fetch-site 被改为 same-origin', hdr.headers['sec-fetch-site'] === 'same-origin', hdr.headers['sec-fetch-site']);
+
+    // (d) 安全底线：第三方来源无论 Host 如何都 403。
+    const evil = await viaGateway(gwPort, {
+      path: '/api/$events/result',
+      method: 'POST',
+      headers: H({ cookie, host: `127.0.0.1:${gwPort}`, origin: 'https://evil.example.com',
+        'sec-fetch-site': 'same-origin', 'content-type': 'application/json' }),
+      body: answerBody,
+    });
+    check('第三方 Origin 的答案 POST 仍 403', evil.status === 403, `status=${evil.status}`);
+
+    // (e) 答案回传与客户端断开解耦：客户端 abort 后核心仍收到完整 body。
+    seen.length = 0;
+    await new Promise((resolve) => {
+      const req = http.request(
+        { host: '127.0.0.1', port: gwPort, path: '/api/$events/result', method: 'POST',
+          headers: H({ cookie, host: `127.0.0.1:${gwPort}`, origin: 'https://dsh.my-cloud.cn',
+            'content-type': 'application/json' }) },
+        () => resolve(),
+      );
+      req.on('error', () => resolve());
+      req.write(answerBody);
+      setImmediate(() => req.destroy());
+      setTimeout(resolve, 600);
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    const got = seen.find((x) => x.url === '/api/$events/result');
+    check('客户端 abort 后核心仍收到答案 POST（解耦）', Boolean(got), `seen=${seen.map((x) => x.url).join(',')}`);
+
+    store.updateOptions({ trustedHosts: [] });
+  }
+
   // ── 7. 反代头改写 ───────────────────────────────────────
   {
     const token = store.createSession('desktop');

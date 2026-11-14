@@ -1,6 +1,6 @@
 {
   "name": "dshweb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DeepSeek Harness 远程网页端接入插件：局域网/虚拟私网 IP 访问官方 Web，移动优先适配，热重载免重启 | DeepSeek Harness (DSH) Remote Web Access: LAN/VPN IP access to official Web UI with hot-reload gateway, no DSH restart needed",
   "keywords": [
     "dsh",

@@ -75,6 +75,15 @@ export declare class GatewayServer {
      *   终结/端口转发下外部端口 ≠ boundPort，端口不作为信任边界。
      */
     isHostAllowed(hostHeader: any): boolean;
+    /**
+     * 判断写请求 Origin 的主机名是否在用户「接入 → 域名白名单」里显式配置。
+     * CDN / 隧道把 Host 改写成回环绑定地址时，浏览器 Origin 仍是公网域名：字符串
+     * 与 Host 不相等，但本质是同一已登录页面的同源写。统一写校验与
+     * buildProxyHeaders 据此按同源处理，避免误 403 掉会话内选择弹窗的答案提交
+     * （POST /api/$events/result），也就不会「提交无效、几秒后弹窗重现」。
+     * Origin 由浏览器设置、脚本不可伪造；这里只比裸主机名，第三方来源不命中。
+     */
+    originHostIsTrusted(originHost: any): boolean;
     /** 启动网关 */
     start(): Promise<{
         port: number;
@@ -90,6 +99,14 @@ export declare class GatewayServer {
      * 4. 反代
      */
     handleHttpRequest(req: any, res: any): void;
+    /**
+     * 答案回传专用反代：缓冲极小的 JSON body 后独立转发给核心，不把客户端断开
+     * 传播到网关→核心这一跳。即使浏览器因代际重置 abort 了 fetch，核心仍能收到
+     * 答案并 settle 对应 pending waterfall；等新代际重连时已无待下发事件，弹窗
+     * 便不会再次出现。核心对 $events/result 幂等（eventId 去重），clientId 真过期
+     * 时只是回 ok:false 被丢弃，不会比现状更差。
+     */
+    proxyAnswerResult(req: any, res: any, proxyHeaders: any): void;
     /** 纯流式反代（非 HTML 注入路径）：登录头像/静态资源/SSE/WS 之外的普通请求。 */
     proxyPassThrough(req: any, res: any, proxyHeaders: any): void;
     /**
@@ -97,7 +114,7 @@ export declare class GatewayServer {
      * 响应体流量较小（DSH HTML <100KB），用 buffer 而非流式。
      */
     proxyHtmlRequest(req: any, res: any, proxyHeaders: any, originalHost: any): void;
-    /** WebSocket upgrade 转发（双向 pipe + 10s 超时 + 对称清理） */
+    /** WebSocket upgrade 转发（双向 pipe + 60s 握手超时 + 对称清理） */
     handleUpgrade(req: any, clientSocket: any, head: any): void;
     getSession(req: any): any;
     /**

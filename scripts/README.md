@@ -7,7 +7,7 @@
 | `build.cjs` | 主构建脚本（本文件说明的重点） |
 | `gen-pwa-icons.mjs` | 可选：重新生成 `assets/pwa-icons/` 下的 PWA 图标 |
 
-> `assets/pwa-icons/` 已随仓库提交，日常构建与发布**不需要** `gen-pwa-icons.mjs`，也不需要 `jimp`。只有当你想换一套图标时才用它。
+> `assets/pwa-icons/` 已随仓库提交，日常构建与发布**不需要** `gen-pwa-icons.mjs`（纯 Node、零第三方依赖，不需要 `jimp`）。只有当你想换一套图标时才用它。
 
 ---
 
@@ -102,14 +102,18 @@ typescript ^7.0.2
 
 ### `gen-pwa-icons.mjs`（可选）
 
-用 `jimp` 从 `icon.svg` 生成各尺寸 PWA 图标到 `assets/pwa-icons/`。
+用纯 Node（零第三方依赖）从 `assets/pwa-icons/favicon.svg` 的官方鲸鱼矢量 path
+生成各尺寸 PWA 图标到 `assets/pwa-icons/`：解析 SVG path → bezier 展平 →
+even-odd 扫描线填充 + 4× 超采样 alpha → 手写最小 PNG 编码器 / PNG-in-ICO。
+产物只画鲸鱼本体（无边框 / 无瓦片）：透明底 `icon-192/512.png`、`favicon.ico`，
+纯白底 `apple-touch-icon.png` / `icon-maskable-512.png`。
 
-- 优先从本项目 `node_modules/jimp`、其次全局安装查找 `jimp`；找不到时提示 `npm i -D jimp`。
-- 产出的图标已随仓库提交，**构建 / 发布不需要它**。
+- 不需要 `jimp` 或任何 npm 依赖；产出的图标已随仓库提交，**构建 / 发布不需要它**。
+- 改了鲸鱼矢量或配色后需重新生成，再跑 `node scripts/build.cjs` 同步 `lib/`。
 
 ```bash
-npm i -D jimp
 node scripts/gen-pwa-icons.mjs
+node scripts/build.cjs
 ```
 
 ---
@@ -123,4 +127,4 @@ node scripts/gen-pwa-icons.mjs
 3. `package.json` 的 `files` 含 `lib`、`cordis.patch.yml`、`icon.svg`、`README.md`、`LICENSE`。
 4. `README.md` / `LICENSE` 存在，`repository.url` 指向正确仓库。
 5. `.gitignore` 忽略 `node_modules/`、`*.log`、`.restore/` 等本机产物。
-6. 发到 npm 时，**裸名 `dshweb` 会被 npm 判定与占位包 `dsh-web` 过近而 `403`**；仓库里的 `package.json` 保持 `name: dshweb` 不变（本地 `file:` 开发模式依赖它），发布时临时把 `name` 改成 `@zwkit/dshweb` 并用 `npm publish --access=public --ignore-scripts` 发布，发完立即还原。安装侧用别名 `"dshweb": "npm:@zwkit/dshweb@^0.1.0"`。
+6. 发到 npm 时，**裸名 `dshweb` 会被 npm 判定与占位包 `dsh-web` 过近而 `403`**；仓库里的 `package.json` 保持 `name: dshweb` 不变（本地 `file:` 开发模式依赖它），发布时临时把 `name` 改成 `@zwkit/dshweb` 并用 `npm publish --access=public --ignore-scripts` 发布，发完立即还原。安装侧用别名 `"dshweb": "npm:@zwkit/dshweb@^0.1.1"`。

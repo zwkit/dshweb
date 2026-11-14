@@ -10,7 +10,7 @@
 
 它不重写、不 fork 官方前端，而是起一个**反向代理网关**，把官方 Web 原样转发出来，再按需注入移动端/桌面端的样式与少量增强脚本。桌面 GUI 本机访问保持原样，不受影响。
 
-> 项目状态：个人自研插件，`0.1.0`。与 `dsh-remote` 无依赖、无耦合。
+> 项目状态：个人自研插件，`0.1.1`。与 `dsh-remote` 无依赖、无耦合。
 
 ### 功能
 
@@ -87,7 +87,7 @@ npm update dshweb
 ```json
 {
   "dependencies": {
-    "dshweb": "npm:@zwkit/dshweb@^0.1.0"
+    "dshweb": "npm:@zwkit/dshweb@^0.1.1"
   }
 }
 ```
@@ -233,7 +233,7 @@ cordis.patch.yml           bundle 注入声明
 
 It does not rewrite or fork the official frontend. Instead it runs a **reverse-proxy gateway** that forwards the official Web as-is and injects mobile/desktop styles plus a small enhancement script on demand. The local desktop GUI is untouched.
 
-> Status: personal plugin, `0.1.0`. No dependency on or coupling with `dsh-remote`.
+> Status: personal plugin, `0.1.1`. No dependency on or coupling with `dsh-remote`.
 
 ### Features
 
@@ -267,7 +267,7 @@ npm run deploy          # copy artifacts into ~/.dsh (two physical copies)
 ```json
 {
   "dependencies": {
-    "dshweb": "npm:@zwkit/dshweb@^0.1.0"
+    "dshweb": "npm:@zwkit/dshweb@^0.1.1"
   }
 }
 ```

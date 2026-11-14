@@ -142,7 +142,7 @@ export function createRoutes(store: WebStore, deps: RouteDeps): WebRoute[] {
           running: Boolean(g && g.getStatus() === 'running'),
           port: gwPort,
           corePort: g?.getCorePort?.() ?? null,
-          version: '0.1.0',
+          version: '0.1.1',
           tls: Boolean(g?.isTls?.()),
           httpsEnabled,
           httpsPort,
