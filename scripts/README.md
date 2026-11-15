@@ -160,8 +160,8 @@ node scripts/build.cjs
 
 1. `lib/` 是最新的（改过 `src/` 后跑过 `npm run build` 或顶层 `tsc`）。
 2. `src/` 与 `lib/` 里没有个人绝对路径、没有对 `dsh-remote` 的引用。
-3. `package.json` 的 `files` 含 `lib`、`cordis.patch.yml`、`icon.svg`、`README.md`、`LICENSE`。
+3. `package.json` 的 `files` 含 `lib`、`cordis.patch.yml`、`icon.svg`、`README.md`、`LICENSE`；`cordis.patch.yml` 的 `name` 保持相对路径 `./lib/index.js`（0.1.2 起），不要改回裸包名。
 4. `README.md` / `LICENSE` 存在，`repository.url` 指向正确仓库。
 5. `.gitignore` 忽略 `node_modules/`、`*.log`、`.restore/` 等本机产物。
 6. **本机两处物理副本已同步**：跑 `npm run deploy:local`（或 `npm run deploy`）后 `npm run deploy:check` 两处都「一致」、退出码 0；随后**重启 DSH**（否则 GUI 的 `status` 仍是旧版本）。参见上文「发版必须同步本机」。
-7. 发到 npm 时，**裸名 `dshweb` 会被 npm 判定与占位包 `dsh-web` 过近而 `403`**；仓库里的 `package.json` 保持 `name: dshweb` 不变（本地 `file:` 开发模式依赖它），发布时临时把 `name` 改成 `@zwkit/dshweb` 并用 `npm publish --access=public --ignore-scripts` 发布，发完立即还原。安装侧用别名 `"dshweb": "npm:@zwkit/dshweb@^0.1.1"`。
+7. 发到 npm 时，**裸名 `dshweb` 会被 npm 判定与占位包 `dsh-web` 过近而 `403`**；仓库里的 `package.json` 保持 `name: dshweb` 不变（本地 `file:` 开发模式依赖它），发布时临时把 `name` 改成 `@zwkit/dshweb` 并用 `npm publish --access=public --ignore-scripts` 发布，发完立即还原。安装侧用别名 `"dshweb": "npm:@zwkit/dshweb@^0.1.2"`；0.1.2 起 `cordis.patch.yml` 用相对路径 `./lib/index.js`，以作用域名为键安装同样可激活（`dsh.profile.bundles` 与依赖键一致即可）。

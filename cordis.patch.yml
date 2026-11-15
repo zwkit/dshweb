@@ -1,3 +1,8 @@
 - insert:
     - id: dshweb
-      name: 'dshweb'
+      # 0.1.2: 相对路径而非包名。DSH 的 anchorInsertedPluginNames() 会把它
+      # 锚定成本 patch 旁的 file:// URL 再 import()，因此加载与安装时用的
+      # 依赖键解耦：node_modules/dshweb 与 node_modules/@zwkit/dshweb 都能激活。
+      # 0.1.1 写死 name: 'dshweb'，以作用域名安装会报 ERR_MODULE_NOT_FOUND。
+      # 请勿改回裸包名；改回会让市场一键安装（作用域名键）再次失效。
+      name: './lib/index.js'

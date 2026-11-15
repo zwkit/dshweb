@@ -10,7 +10,7 @@
 
 它不重写、不 fork 官方前端，而是起一个**反向代理网关**，把官方 Web 原样转发出来，再按需注入移动端/桌面端的样式与少量增强脚本。桌面 GUI 本机访问保持原样，不受影响。
 
-> 项目状态：个人自研插件，`0.1.1`。与 `dsh-remote` 无依赖、无耦合。
+> 项目状态：个人自研插件，`0.1.2`。与 `dsh-remote` 无依赖、无耦合。
 
 ### 功能
 
@@ -67,7 +67,11 @@ npm run deploy:check
 >
 > **发版必读**：推 GitHub / 发 npm 不会自动更新本机这两处副本。每次发版后必须 `npm run deploy:local`（或 `deploy`）→ `npm run deploy:check` → **重启 DSH**（`status` 的版本号在启动时加载，磁盘更新不会热生效）。详见 [scripts/README.md「发版必须同步本机」](scripts/README.md)。
 
-#### 方式 B：GitHub / git 依赖（发布后）
+#### 方式 B：GitHub / git 依赖（需要本机有 git）
+
+> **无 git 环境请直接跳到方式 C。** 方式 B 走 `git ls-remote`，机器没装 git（或 git 不在 PATH）时 pnpm 会报：
+> `[ERR_PNPM_GIT_RESOLVE_FAILED] Failed to resolve git dependency "https://github.com/zwkit/dshweb": git ls-remote failed: 'git' 不是内部或外部命令…`
+> 报错里建议的 `git config --global url."git@github.com:".insteadOf "https://github.com/"` 只在「git 存在但只能走 SSH」时有用，缺 git 时无效；装好 Git for Windows 并重启终端也能解，但最省事的是方式 C（纯 registry tarball，完全不调用 git）。
 
 把 profile 里的依赖从 `file:...` 改成 git 依赖即可：
 
@@ -85,23 +89,84 @@ npm update dshweb
 
 仓库已随源码提交 `lib/` 编译产物，并配置了 `prepare` 钩子：git 依赖安装时若本机缺少构建工具链，会直接沿用已提交的 `lib/`，不会让安装失败。更新回路：`git push` → `npm update dshweb` → 重启 DSH（或触发插件重载）。
 
-#### 方式 C：npm registry（已发布的作用域包）
+#### 方式 C：npm registry（免 git，另一台电脑推荐）
 
-本插件已在 npm 上以作用域包 [`@zwkit/dshweb`](https://www.npmjs.com/package/@zwkit/dshweb) 发布（裸名 `dshweb` 被 npm 判定与占位包 `dsh-web` 过近，故采用作用域名）。把 profile 里的依赖改成：
+本插件已在 npm 上以作用域包 [`@zwkit/dshweb`](https://www.npmjs.com/package/@zwkit/dshweb) 发布（裸名 `dshweb` 被 npm 判定与占位包 `dsh-web` 过近，故采用作用域名）。registry 安装下载的是已编译好的 tarball（含 `lib/`），**不需要 git、不需要构建工具链、也不会跑 `prepare` 构建**。
+
+> ✅ **0.1.2 起安装名不再受限。** 插件自带的 `cordis.patch.yml` 用相对路径 `./lib/index.js` 作加载入口，DSH 启动时会把它锚定成该 patch 旁的 `file://` URL 再 `import()`，不再按裸名 `dshweb` 去找包。别名 `dshweb` 与真实作用域名 `@zwkit/dshweb` 都能装、都能激活——只要 **`dsh.profile.bundles` 里的名字与实际安装目录名一致**（bundles 靠这个名字定位包目录）。
+
+**推荐写法（别名，与本机 `file:` 开发模式一致）：** 编辑 profile `~/.dsh/profiles/desktop/package.json`
 
 ```json
 {
   "dependencies": {
-    "dshweb": "npm:@zwkit/dshweb@^0.1.1"
+    "dshweb": "npm:@zwkit/dshweb@^0.1.2"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["dshweb"]
+    }
   }
 }
 ```
 
-```bash
-npm install
+**等价写法（真实作用域名；市场地址框 / 一键安装得到的多是这种）：**
+
+```json
+{
+  "dependencies": {
+    "@zwkit/dshweb": "^0.1.2"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["@zwkit/dshweb"]
+    }
+  }
+}
 ```
 
-包名别名 `dshweb` 仅供加载器按包名解析；实际来源是作用域包。注意：本地 `file:` 开发模式（方式 A）与这里的 npm 安装互不冲突，二者择一即可。
+两种写法只差 `node_modules` 下的目录名（`node_modules/dshweb` vs `node_modules/@zwkit/dshweb`），`bundles` 跟着改即可，**不必再为了迁就加载器去改写依赖键**。
+
+2. 安装并校验：
+
+```bash
+cd ~/.dsh/profiles/desktop
+pnpm install          # 或 npm install
+node -e "console.log(require.resolve('dshweb'))"             # 别名写法
+# 或： node -e "console.log(require.resolve('@zwkit/dshweb'))"  # 作用域名写法
+# 必须打印 .../lib/index.js；报 Cannot find module 说明 bundles / 依赖键没对上
+```
+
+3. **重启 DSH**（不是刷新页面）。启动日志不应再出现 `1 entry did not activate`。
+
+> 本地 `file:` 开发模式（方式 A）与这里的 npm 安装互不冲突，二者择一即可。
+
+#### 升级 / 故障排查：安装成功，但启动报 `ERR_MODULE_NOT_FOUND`
+
+现象（DSH 启动时）：
+
+```text
+dsh: warning: 1 entry did not activate
+dshweb (dshweb): failed to import: Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'dshweb' imported from .../profiles/desktop
+```
+
+原因：这是 **0.1.1 及更早版本**的已知问题——那时 `cordis.patch.yml` 写死 `name: 'dshweb'`，宿主会 `import('dshweb')`。若以作用域名为键安装（`pnpm add @zwkit/dshweb`、市场地址框填 `npm:@zwkit/dshweb@0.1.1`、或手写 `"@zwkit/dshweb": "^0.1.1"`），包落在 `node_modules/@zwkit/dshweb`，裸名 `dshweb` 解析不到，bundle 被跳过，于是「装上了却没激活」。**0.1.2 已把入口改成相对路径，去掉了这个耦合。**
+
+修法（在出问题的那台机器上改，不用重装 DSH）：
+
+```bash
+cd ~/.dsh/profiles/desktop
+# 1) 升到 0.1.2（作用域名键可以直接保留）
+pnpm add "@zwkit/dshweb@^0.1.2"
+# 若之前用的是别名键： pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.2"
+# 2) 确认 dsh.profile.bundles 与实际安装名一致："@zwkit/dshweb" 或 "dshweb"
+node -e "console.log(require.resolve('@zwkit/dshweb'))"   # 按实际安装名二选一
+# 3) 重启 DSH
+```
+
+不想升级也可继续用 0.1.1，但必须保持别名写法（依赖键 `dshweb` + bundles `["dshweb"]`），让 `node_modules/dshweb` 存在。验证标准三条：`require.resolve('<安装名>')` 成功且指向 `<安装目录>/lib/index.js`、`lib/index.js` 真实存在、重启后无 `did not activate` 告警。
+
+> **市场里搜不到 / 一键安装为什么还不可靠？** 目录条目（PR #15249）已合并，但生成的 `plugins.json` / `index.json` 尚未重建，所以「插件 → 发现」暂时搜不到。按当前条目（没有 `npm:` 映射；仓库 `package.json` 的名字是裸名 `dshweb`，npm 上并没有这个包，自动探测派生不出映射）刷新后，市场一键安装会回退成 `github:zwkit/dshweb` 的 git 路径，没装 git 的机器仍报 `ERR_PNPM_GIT_RESOLVE_FAILED`。想在没 git 的机器上免命令行安装，可在市场地址框直接填 `npm:@zwkit/dshweb@^0.1.2`——**0.1.2 起这条路径不会再触发 `ERR_MODULE_NOT_FOUND`**，装完确认 `bundles` 是 `@zwkit/dshweb` 即可。若日后给条目补上 `npm:` 映射，市场会执行 `pnpm add @zwkit/dshweb`，效果相同。纯 registry 的手动安装请走方式 C。
 
 ### 使用
 
@@ -240,7 +305,7 @@ cordis.patch.yml           bundle 注入声明
 
 It does not rewrite or fork the official frontend. Instead it runs a **reverse-proxy gateway** that forwards the official Web as-is and injects mobile/desktop styles plus a small enhancement script on demand. The local desktop GUI is untouched.
 
-> Status: personal plugin, `0.1.1`. No dependency on or coupling with `dsh-remote`.
+> Status: personal plugin, `0.1.2`. No dependency on or coupling with `dsh-remote`.
 
 ### Features
 
@@ -271,23 +336,78 @@ npm run deploy:check    # read-only: verify both copies match source byte-for-by
 
 > **Release rule:** pushing GitHub / publishing npm does **not** update these local copies. After every release run `deploy:local` (or `deploy`) → `deploy:check` → **restart DSH** (the `status` version is loaded at startup). See [scripts/README.md](scripts/README.md)「发版必须同步本机」.
 
-**GitHub/git dependency (after publishing):** set `"dshweb": "github:zwkit/dshweb"` in the profile's `package.json`, then `npm update dshweb`. Committed `lib/` + a `prepare` hook keep git installs working without a local toolchain.
+**GitHub/git dependency (requires git on the machine, after publishing):** set `"dshweb": "github:zwkit/dshweb"` in the profile's `package.json`, then `npm update dshweb`. Committed `lib/` + a `prepare` hook keep git installs working without a local toolchain. **If the machine has no git**, pnpm fails with `[ERR_PNPM_GIT_RESOLVE_FAILED] ... git ls-remote failed: 'git' is not recognized ...` — the `insteadOf` hint in that error only helps when git exists but needs SSH. Use the npm-registry method below instead; it needs no git at all.
 
-**npm registry (published scoped package):** the plugin is published on npm as the scoped package [`@zwkit/dshweb`](https://www.npmjs.com/package/@zwkit/dshweb) (the bare name `dshweb` is rejected by npm as too similar to the placeholder package `dsh-web`, hence the scoped name). Set the profile dependency to:
+**npm registry (git-free; recommended for another computer):** the plugin is published on npm as the scoped package [`@zwkit/dshweb`](https://www.npmjs.com/package/@zwkit/dshweb) (the bare name `dshweb` is rejected by npm as too similar to the placeholder package `dsh-web`, hence the scoped name). The registry tarball already contains the compiled `lib/`, so installing needs **no git, no toolchain, and no `prepare` build**.
+
+> ✅ **Since 0.1.2 the install name no longer matters.** The shipped `cordis.patch.yml` uses the relative path `./lib/index.js` as its loader entry; DSH anchors it to a `file://` URL beside the patch before `import()`. It no longer resolves the bare name `dshweb`. Both an aliased `dshweb` install and a real scoped `@zwkit/dshweb` install work — just keep **`dsh.profile.bundles` in sync with the installed directory name** (bundles locates the package directory by that name).
+
+**Recommended (alias, matches the local `file:` development setup):** edit `~/.dsh/profiles/desktop/package.json`
 
 ```json
 {
   "dependencies": {
-    "dshweb": "npm:@zwkit/dshweb@^0.1.1"
+    "dshweb": "npm:@zwkit/dshweb@^0.1.2"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["dshweb"]
+    }
   }
 }
 ```
 
-```bash
-npm install
+**Equivalent (real scoped name; what the market address box / one-click install usually produces):**
+
+```json
+{
+  "dependencies": {
+    "@zwkit/dshweb": "^0.1.2"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["@zwkit/dshweb"]
+    }
+  }
+}
 ```
 
-The `dshweb` alias is only for the loader's package-name resolution; the actual source is the scoped package. The local `file:` development setup and this npm install are mutually exclusive — pick one.
+The only difference is the directory under `node_modules` (`node_modules/dshweb` vs `node_modules/@zwkit/dshweb`); set `bundles` accordingly. **You no longer have to reshape the dependency key to satisfy the loader.**
+
+2. Install and verify:
+
+```bash
+cd ~/.dsh/profiles/desktop
+pnpm install          # or npm install
+node -e "console.log(require.resolve('dshweb'))"             # aliased form
+# or:  node -e "console.log(require.resolve('@zwkit/dshweb'))"  # scoped form
+# must print .../lib/index.js
+```
+
+3. **Restart DSH** (a page refresh is not enough). No `1 entry did not activate` warning should appear.
+
+The local `file:` development setup and this npm install are mutually exclusive — pick one.
+
+**Upgrade / Troubleshooting: install succeeded, startup reports `ERR_MODULE_NOT_FOUND`:**
+
+```text
+dsh: warning: 1 entry did not activate
+dshweb (dshweb): failed to import: Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'dshweb' imported from .../profiles/desktop
+```
+
+This is a known issue in **0.1.1 and earlier**: the patch hardcoded `name: 'dshweb'`, so the host ran `import('dshweb')`. Installing under the real scoped key (`pnpm add @zwkit/dshweb`, pasting `npm:@zwkit/dshweb@0.1.1` into the market address box, or a handwritten `"@zwkit/dshweb": "^0.1.1"`) lands at `node_modules/@zwkit/dshweb`, leaving the bare name unresolvable, so the bundle is skipped. **0.1.2 replaced the entry with a relative path and removed that coupling.** Fix in place:
+
+```bash
+cd ~/.dsh/profiles/desktop
+# 1) upgrade to 0.1.2 (the scoped dependency key can stay)
+pnpm add "@zwkit/dshweb@^0.1.2"
+# if you used the alias key before: pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.2"
+# 2) make sure dsh.profile.bundles matches the install name: "@zwkit/dshweb" or "dshweb"
+node -e "console.log(require.resolve('@zwkit/dshweb'))"   # pick the name you installed
+# 3) restart DSH
+```
+
+Staying on 0.1.1 also works, but only with the alias form (dependency key `dshweb` + bundles `["dshweb"]`) so that `node_modules/dshweb` exists. Verify: `require.resolve('<install name>')` succeeds and points at `<install dir>/lib/index.js`, and no `did not activate` warning after restart. The catalog entry (PR #15249) has merged, but the generated `plugins.json` / `index.json` have not been rebuilt yet, which is why the Discover page cannot find it. As the entry stands (no `npm:` mapping; the repo's `package.json` name is the bare `dshweb`, which is not on npm, so the automatic probe derives no mapping), a rebuilt market would fall back to `github:zwkit/dshweb` — the git path — and still fail with `ERR_PNPM_GIT_RESOLVE_FAILED` on a machine without git. For a git-free install, paste `npm:@zwkit/dshweb@^0.1.2` into the market address box instead — **0.1.2 no longer trips `ERR_MODULE_NOT_FOUND` on that path**; just set `bundles` to `@zwkit/dshweb`. If an `npm:` mapping is added to the entry later, the market runs `pnpm add @zwkit/dshweb` with the same result.
 
 ### Usage
 
