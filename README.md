@@ -10,7 +10,7 @@
 
 它不重写、不 fork 官方前端，而是起一个**反向代理网关**，把官方 Web 原样转发出来，再按需注入移动端/桌面端的样式与少量增强脚本。桌面 GUI 本机访问保持原样，不受影响。
 
-> 项目状态：个人自研插件，`0.1.2`。与 `dsh-remote` 无依赖、无耦合。
+> 项目状态：个人自研插件，`0.1.3`。与 `dsh-remote` 无依赖、无耦合。
 
 ### 功能
 
@@ -100,7 +100,7 @@ npm update dshweb
 ```json
 {
   "dependencies": {
-    "dshweb": "npm:@zwkit/dshweb@^0.1.2"
+    "dshweb": "npm:@zwkit/dshweb@^0.1.3"
   },
   "dsh": {
     "profile": {
@@ -115,7 +115,7 @@ npm update dshweb
 ```json
 {
   "dependencies": {
-    "@zwkit/dshweb": "^0.1.2"
+    "@zwkit/dshweb": "^0.1.3"
   },
   "dsh": {
     "profile": {
@@ -157,8 +157,8 @@ dshweb (dshweb): failed to import: Error [ERR_MODULE_NOT_FOUND]: Cannot find pac
 ```bash
 cd ~/.dsh/profiles/desktop
 # 1) 升到 0.1.2（作用域名键可以直接保留）
-pnpm add "@zwkit/dshweb@^0.1.2"
-# 若之前用的是别名键： pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.2"
+pnpm add "@zwkit/dshweb@^0.1.3"
+# 若之前用的是别名键： pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.3"
 # 2) 确认 dsh.profile.bundles 与实际安装名一致："@zwkit/dshweb" 或 "dshweb"
 node -e "console.log(require.resolve('@zwkit/dshweb'))"   # 按实际安装名二选一
 # 3) 重启 DSH
@@ -166,7 +166,23 @@ node -e "console.log(require.resolve('@zwkit/dshweb'))"   # 按实际安装名�
 
 不想升级也可继续用 0.1.1，但必须保持别名写法（依赖键 `dshweb` + bundles `["dshweb"]`），让 `node_modules/dshweb` 存在。验证标准三条：`require.resolve('<安装名>')` 成功且指向 `<安装目录>/lib/index.js`、`lib/index.js` 真实存在、重启后无 `did not activate` 告警。
 
-> **市场里搜不到 / 一键安装为什么还不可靠？** 目录条目（PR #15249）已合并，但生成的 `plugins.json` / `index.json` 尚未重建，所以「插件 → 发现」暂时搜不到。按当前条目（没有 `npm:` 映射；仓库 `package.json` 的名字是裸名 `dshweb`，npm 上并没有这个包，自动探测派生不出映射）刷新后，市场一键安装会回退成 `github:zwkit/dshweb` 的 git 路径，没装 git 的机器仍报 `ERR_PNPM_GIT_RESOLVE_FAILED`。想在没 git 的机器上免命令行安装，可在市场地址框直接填 `npm:@zwkit/dshweb@^0.1.2`——**0.1.2 起这条路径不会再触发 `ERR_MODULE_NOT_FOUND`**，装完确认 `bundles` 是 `@zwkit/dshweb` 即可。若日后给条目补上 `npm:` 映射，市场会执行 `pnpm add @zwkit/dshweb`，效果相同。纯 registry 的手动安装请走方式 C。
+> **市场里搜不到 / 一键安装为什么还不可靠？** 目录条目（PR #15249）已合并，但生成的 `plugins.json` / `index.json` 尚未重建，所以「插件 → 发现」暂时搜不到。按当前条目（没有 `npm:` 映射；仓库 `package.json` 的名字是裸名 `dshweb`，npm 上并没有这个包，自动探测派生不出映射）刷新后，市场一键安装会回退成 `github:zwkit/dshweb` 的 git 路径，没装 git 的机器仍报 `ERR_PNPM_GIT_RESOLVE_FAILED`。想在没 git 的机器上免命令行安装，可在市场地址框直接填 `npm:@zwkit/dshweb@^0.1.3`——**0.1.2 起这条路径不会再触发 `ERR_MODULE_NOT_FOUND`**，装完确认 `bundles` 是 `@zwkit/dshweb` 即可。若日后给条目补上 `npm:` 映射，市场会执行 `pnpm add @zwkit/dshweb`，效果相同。纯 registry 的手动安装请走方式 C。
+
+### 故障排查：插件已启用，但设置里没有「远程连接」
+
+现象：DSH 启动日志没有报错、插件列表里 `dshweb` 显示已启用，但「设置」侧边栏里找不到「远程连接 / Remote Connect」。
+
+原因：**0.1.2 的已知问题（0.1.3 已修）**。0.1.2 把宿主侧的加载入口改成了相对路径，但客户端 bundle `lib/client.js` 里 `__ModuleLoader__.load({ id: ... })` 的注册 id 仍写死裸名 `dshweb`。npm 安装后包名是 `@zwkit/dshweb`，宿主用**包名**作启动图行的 id，客户端找不到同名注册 → 该行永远物化不出来 → `slots.inject('settings.section')` 从未执行，设置里自然没有入口。这种失败**不会**在启动日志里报 `did not activate`，所以很容易被误判成「装好了」。
+
+修法：升到 0.1.3（客户端 bundle 会同时注册 `dshweb` 与 `@zwkit/dshweb` 两个 id，别名安装与作用域名安装都能对上），然后**重启 DSH**（不是刷新页面）：
+
+```bash
+cd ~/.dsh/profiles/desktop
+pnpm add "@zwkit/dshweb@^0.1.3"                  # 作用域名写法
+# 或别名写法： pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.3"
+```
+
+验证：重启后打开「设置」，侧边栏应出现「远程连接 / Remote Connect」。
 
 ### 使用
 
@@ -305,7 +321,7 @@ cordis.patch.yml           bundle 注入声明
 
 It does not rewrite or fork the official frontend. Instead it runs a **reverse-proxy gateway** that forwards the official Web as-is and injects mobile/desktop styles plus a small enhancement script on demand. The local desktop GUI is untouched.
 
-> Status: personal plugin, `0.1.2`. No dependency on or coupling with `dsh-remote`.
+> Status: personal plugin, `0.1.3`. No dependency on or coupling with `dsh-remote`.
 
 ### Features
 
@@ -347,7 +363,7 @@ npm run deploy:check    # read-only: verify both copies match source byte-for-by
 ```json
 {
   "dependencies": {
-    "dshweb": "npm:@zwkit/dshweb@^0.1.2"
+    "dshweb": "npm:@zwkit/dshweb@^0.1.3"
   },
   "dsh": {
     "profile": {
@@ -362,7 +378,7 @@ npm run deploy:check    # read-only: verify both copies match source byte-for-by
 ```json
 {
   "dependencies": {
-    "@zwkit/dshweb": "^0.1.2"
+    "@zwkit/dshweb": "^0.1.3"
   },
   "dsh": {
     "profile": {
@@ -400,14 +416,30 @@ This is a known issue in **0.1.1 and earlier**: the patch hardcoded `name: 'dshw
 ```bash
 cd ~/.dsh/profiles/desktop
 # 1) upgrade to 0.1.2 (the scoped dependency key can stay)
-pnpm add "@zwkit/dshweb@^0.1.2"
-# if you used the alias key before: pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.2"
+pnpm add "@zwkit/dshweb@^0.1.3"
+# if you used the alias key before: pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.3"
 # 2) make sure dsh.profile.bundles matches the install name: "@zwkit/dshweb" or "dshweb"
 node -e "console.log(require.resolve('@zwkit/dshweb'))"   # pick the name you installed
 # 3) restart DSH
 ```
 
-Staying on 0.1.1 also works, but only with the alias form (dependency key `dshweb` + bundles `["dshweb"]`) so that `node_modules/dshweb` exists. Verify: `require.resolve('<install name>')` succeeds and points at `<install dir>/lib/index.js`, and no `did not activate` warning after restart. The catalog entry (PR #15249) has merged, but the generated `plugins.json` / `index.json` have not been rebuilt yet, which is why the Discover page cannot find it. As the entry stands (no `npm:` mapping; the repo's `package.json` name is the bare `dshweb`, which is not on npm, so the automatic probe derives no mapping), a rebuilt market would fall back to `github:zwkit/dshweb` — the git path — and still fail with `ERR_PNPM_GIT_RESOLVE_FAILED` on a machine without git. For a git-free install, paste `npm:@zwkit/dshweb@^0.1.2` into the market address box instead — **0.1.2 no longer trips `ERR_MODULE_NOT_FOUND` on that path**; just set `bundles` to `@zwkit/dshweb`. If an `npm:` mapping is added to the entry later, the market runs `pnpm add @zwkit/dshweb` with the same result.
+Staying on 0.1.1 also works, but only with the alias form (dependency key `dshweb` + bundles `["dshweb"]`) so that `node_modules/dshweb` exists. Verify: `require.resolve('<install name>')` succeeds and points at `<install dir>/lib/index.js`, and no `did not activate` warning after restart. The catalog entry (PR #15249) has merged, but the generated `plugins.json` / `index.json` have not been rebuilt yet, which is why the Discover page cannot find it. As the entry stands (no `npm:` mapping; the repo's `package.json` name is the bare `dshweb`, which is not on npm, so the automatic probe derives no mapping), a rebuilt market would fall back to `github:zwkit/dshweb` — the git path — and still fail with `ERR_PNPM_GIT_RESOLVE_FAILED` on a machine without git. For a git-free install, paste `npm:@zwkit/dshweb@^0.1.3` into the market address box instead — **0.1.2 no longer trips `ERR_MODULE_NOT_FOUND` on that path**; just set `bundles` to `@zwkit/dshweb`. If an `npm:` mapping is added to the entry later, the market runs `pnpm add @zwkit/dshweb` with the same result.
+
+### Troubleshooting: enabled, but no "Remote Connect" in Settings
+
+Symptom: the DSH startup log is clean and `dshweb` shows as enabled in the plugin list, yet the Settings sidebar has no "Remote Connect" entry.
+
+Cause: a **known issue in 0.1.2, fixed in 0.1.3**. 0.1.2 moved the host-side loader entry to a relative path, but the client bundle `lib/client.js` still hardcoded the bare name in `__ModuleLoader__.load({ id: ... })`. An npm install names the package `@zwkit/dshweb`, and the host uses the **package name** as the boot-graph row id, so the client never finds a matching registration: the row can never materialize, `slots.inject('settings.section')` never runs, and Settings has no entry. This failure does **not** print `did not activate`, so it is easy to mistake for a healthy install.
+
+Fix: upgrade to 0.1.3 (its client bundle registers both `dshweb` and `@zwkit/dshweb`, so alias and scoped installs both match), then **restart DSH** (a page refresh is not enough):
+
+```bash
+cd ~/.dsh/profiles/desktop
+pnpm add "@zwkit/dshweb@^0.1.3"                  # scoped form
+# or the alias form: pnpm add "dshweb@npm:@zwkit/dshweb@^0.1.3"
+```
+
+Verify: after the restart, Settings should show "Remote Connect" in the sidebar.
 
 ### Usage
 

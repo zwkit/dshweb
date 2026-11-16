@@ -48,6 +48,7 @@ const DEPLOY_ENABLED =
   process.argv.includes('--deploy') ||
   process.env.DSHWEB_DEPLOY === '1' ||
   DEPLOY_ONLY;
+const WRAP_ONLY = process.argv.includes('--wrap-only');
 const SKIP_COMPILE = DEPLOY_ONLY || DEPLOY_CHECK; // 只复制 / 只校验：不 spawn 编译，沙箱安全
 
 const HOME = os.homedir();
@@ -103,20 +104,48 @@ function compile() {
   });
   log('✓ esbuild 完成');
 
+  wrapClient();
+}
+
+// ---- 3) wrap client.raw.js -> client.js ----
+// 宿主用 package.json 的 name 作浏览器模块 id（ClientModuleRegistry.reconcilePackage ->
+// graphRow(packageName, ...)），而 __ModuleLoader__.load 必须注册同一个 id，否则该行永远
+// 物化不出来：控制台报 loaded without registering "<pkg>" via __ModuleLoader__.load，
+// 表现就是「插件已启用，但设置里没有『远程连接』」。
+// 仓库里的 name 是裸名 dshweb（本机 file: 模式依赖它），npm 发布时改名为 @zwkit/dshweb，
+// 安装后 package.json 的 name 就变成作用域名。因此这里按别名表把两种 id 都注册一遍，
+// 让同一份产物在任何安装名下都能对上宿主期望的 id。
+const CLIENT_ID_ALIASES = ['dshweb', '@zwkit/dshweb'];
+function clientIds() {
+  const ids = [];
+  const add = (id) => {
+    if (typeof id === 'string' && id && !ids.includes(id)) ids.push(id);
+  };
+  try { add(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name); } catch (e) {}
+  CLIENT_ID_ALIASES.forEach(add);
+  return ids;
+}
+
+function wrapClient() {
   const raw = fs.readFileSync(path.join(LIB, 'client.raw.js'), 'utf8');
+  const ids = clientIds();
   const wrapped =
-    '/**\n * dshweb 客户端运行时 Bundle（自动生成，勿手改）\n */\n\n' +
-    'window.__ModuleLoader__.load({\n' +
-    '  id: "dshweb",\n' +
-    '  factory: function(require) {\n' +
+    '/**\n * dshweb 客户端运行时 Bundle（自动生成，勿手改）\n *\n' +
+    ' * 同一个 factory 按多个模块 id 各注册一次（见 scripts/build.cjs 的 clientIds()）：\n' +
+    ' * 宿主以 package.json 的 name 作为启动图行 id，裸名安装是 dshweb，作用域名安装是\n' +
+    ' * @zwkit/dshweb。只注册一个 id 会让另一种安装方式的客户端行永远物化失败。\n */\n\n' +
+    '(function () {\n' +
+    '  // 正文只出现一次：两个模块 id 共享同一个 factory（宿主各自调用一次，互不干扰）。\n' +
+    '  function dshwebFactory(require) {\n' +
     '    var module = { exports: {} };\n' +
     '    var exports = module.exports;\n' +
     raw +
     '\n    return module.exports;\n' +
     '  }\n' +
-    '});\n';
+    ids.map((id) => '  window.__ModuleLoader__.load({ id: ' + JSON.stringify(id) + ', factory: dshwebFactory });\n').join('') +
+    '})();\n';
   fs.writeFileSync(path.join(LIB, 'client.js'), wrapped, 'utf8');
-  log('✓ client.js 包装完成 (' + Buffer.byteLength(wrapped) + 'B)');
+  log('✓ client.js 包装完成 (' + Buffer.byteLength(wrapped) + 'B, ids: ' + ids.join(', ') + ')');
 }
 
 // ---- 5) deploy manifest ----
@@ -252,6 +281,14 @@ function main() {
     }
     console.log('\n✅ 本机安装与源码一致（' + deployTargets().length + ' 处，逐字节 + 版本号）。');
     console.log('   提示：GUI 显示的版本来自启动时加载的 routes/api.ts，若刚同步请重启 DSH 才能看到新号。');
+    return;
+  }
+
+  // ---- 3) --wrap-only: re-wrap the committed client.raw.js, no toolchain needed ----
+  if (WRAP_ONLY) {
+    log('⏭  --wrap-only：只重包装 lib/client.raw.js -> lib/client.js');
+    wrapClient();
+    log('✅ 包装完成');
     return;
   }
 

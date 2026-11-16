@@ -106,6 +106,7 @@ function nodeText(node) {
     .join('');
 }
 
+const capturedIds = [];
 let captured = null;
 const sandbox = {
   console,
@@ -122,7 +123,14 @@ const sandbox = {
     createElement: () => ({ style: {}, dataset: {}, setAttribute() {}, appendChild() {} }),
   },
 };
-sandbox.window = { __ModuleLoader__: { load: (o) => { captured = o; } } };
+sandbox.window = {
+  __ModuleLoader__: {
+    load: (o) => {
+      capturedIds.push(o.id);
+      captured = o;
+    },
+  },
+};
 sandbox.globalThis = sandbox;
 const ctx = vm.createContext(sandbox);
 vm.runInContext(clientJs, ctx, { filename: 'client.js' });
@@ -148,8 +156,16 @@ function loadModule({ react = makeReact(), remote = null, modal = null, primitiv
       createElement: () => ({ style: {}, dataset: {}, setAttribute() {}, appendChild() {} }),
     },
   };
+  const ids = [];
   let cap = null;
-  sb.window = { __ModuleLoader__: { load: (o) => { cap = o; } } };
+  sb.window = {
+    __ModuleLoader__: {
+      load: (o) => {
+        ids.push(o.id);
+        if (cap === null) cap = o;
+      },
+    },
+  };
   sb.globalThis = sb;
   const c = vm.createContext(sb);
   vm.runInContext(clientJs, c, { filename: 'client.js' });
@@ -259,7 +275,8 @@ await r.run(async (check) => {
   {
     const { mod, cap } = loadModule({ primitives: null, modal: null });
     check('bundle 调用 __ModuleLoader__.load', Boolean(cap));
-    check('load 的 id 为 dshweb', cap && cap.id === 'dshweb', cap && cap.id);
+    check('load 注册了 dshweb 与 @zwkit/dshweb 两个 id', capturedIds.includes('dshweb') && capturedIds.includes('@zwkit/dshweb'), capturedIds.join(','));
+check('load 的 factory 可执行', typeof (cap && cap.factory) === 'function');
     check('导出 apply 函数', typeof mod.apply === 'function');
     check('导出 default === apply', mod.default === mod.apply);
     check('导出 inject 数组', Array.isArray(mod.inject), JSON.stringify(mod.inject));
